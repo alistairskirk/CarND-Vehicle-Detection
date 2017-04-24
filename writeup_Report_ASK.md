@@ -25,7 +25,7 @@ The goals / steps of this project are the following:
 
 
 ## [Rubric](https://review.udacity.com/#!/rubrics/513/view) Points
-### Because a different approache was chosen, the rubric will not directly apply for this project.
+### Because a different approach was chosen, the rubric will not directly apply for this project.
 
 ---
 ###Writeup / README
@@ -33,6 +33,8 @@ The goals / steps of this project are the following:
 ####1. Provide a Writeup / README that includes all the rubric points and how you addressed each one.  You can submit your writeup as markdown or pdf.  [Here](https://github.com/udacity/CarND-Vehicle-Detection/blob/master/writeup_template.md) is a template writeup for this project you can use as a guide and a starting point.  
 
 You're reading it!
+
+I chose to use a Neural Network Approach for this project instead of the recommended HOG/SVM approach. I did this because I find the NN approach fascinating, and will likely be a better tool for this type of computer vision in the very near future. Additionally the processing time for the NN is _significantly_ faster compared to the HOG approach. While not real time yet, the NN processes at approx. 8 frames per second.
 
 ### Assembling Training Data
 
@@ -42,7 +44,7 @@ The code for this step is contained in the second code cell of the IPython noteb
 
 I started by downloading the [Udacity Annotated Driving Set](https://github.com/udacity/self-driving-car/tree/master/annotations) that was derived from a [crowd-ai](https://crowdai.com/) exercise to obtain labelled training data for trucks, cars, and pedestrians.
 
-The driving set contains ~4.5GB of images and a csv file that describes attributes of each image. Using pandas I created a dataframe of the vehicle list and removed extraneous information:
+The data set contains ~1.5GB of images (9,420) and a csv file that describes attributes of each image. Using pandas I created a dataframe of the vehicle list and removed extraneous information:
 ![pandas][pandas]
 
 In the third code block of the notebook I created functions to obtain the bounding box coordinates from the DataFrame for all trucks and cars, and their corresponding images, and then plotted the bounding boxes to ensure that the correct information was obtained:
@@ -69,6 +71,7 @@ The U-Net is a segmentation type neural network, where the output of the first f
 
 I also updated the network achitecture to use Keras 2, and trained it to use the reduced image input size (480,400):
 
+```
 _________________________________________________________________
 Layer (type)                 Output Shape              Param #   
 
@@ -140,7 +143,7 @@ Total params: 491,137.0
 Trainable params: 491,137.0
 Non-trainable params: 0.0
 _________________________________________________________________
-
+```
 The loss function that is used in the NN is a modification of the so-called [Dice-Sorensen Coefficienct](https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient) and explained in detail by Marko and Vivek. Essentially the loss function finds the intersection of the predicted mask and ground truth masks, and divides by the sum of the magnitude of each, and adds a smoothing scalar of 1, I believe to avoid cases of dividing by zero in case the predicted image or mask is zero:
 
 ```
@@ -175,7 +178,9 @@ As shown in the 15th code block of the notebook, a selection of images from the 
 
 #### Pipeline Production and Smoothing Parameters
 
-As shown in the 16th code block, a Car Class was created to store essential information for each vehicle that is detected including the `n` most recent bounding boxes, a simple counter `self.detected` that is used in determining how long the car has been detected (in frames), and if the car is consistently detected in each new frame, this counter increases at a rate of 1.5, however if the car has not been detected the counter decays at a rate of 1.0 per frame, until it is essentially 'forgotten' and removed from the list of Cars.
+As shown in the 16th code block, a Car Class was created to store essential information for each vehicle that is detected including:
+* The `n` most recent bounding boxes using averaging to find the `bestbox`
+* a simple counter `self.detected` that is used in determining how long the car has been detected (in frames): if the car is consistently detected in each new frame, this counter increases at a rate of 1.5, however if the car has not been detected the counter decays at a rate of 1.0 per frame, until it is essentially 'forgotten' and removed from the list of Cars.
 
 In the 17th code block, I set up a production pipeline of functions that:
 * Use CLAHE to correct image luminosity
@@ -185,7 +190,7 @@ In the 17th code block, I set up a production pipeline of functions that:
 
 additional functions in here include:
 * a distance calculation between cars - if they are within 150 pixels, the cars are considered part of the same car and are merged together
-* draw boundary boxes - takes an input image and list of Car objects, then draws their `n` averaged boundary box dimensions, included in here are some sanity checks for whether any newly detected cars are part of the original Car List, and if they are they are merged, and also any boundary boxes that are smaller than 400 pixels in total are ignored, this reduced the number of false positives.
+* draw boundary boxes - takes an input image and list of Car objects, then draws their `n` averaged boundary box dimensions, included in here are some sanity checks for whether any newly detected cars are part of the original Car List, and if so they are merged, and also any boundary boxes that are smaller than 400 pixels in total are ignored, this reduced the number of false positives.
 
 In the 18th code block the main image processing pipeline function was defined. This proved to be a bit of a challenge because the video input images were at a different resolution than the full size training images (1280, 960) compared to (1920,1200), so I had to scale the images up using CV2's `INTER_CUBIC` method, then slice and scale the images to the expected input layer size, and once the predicted masks were received, they were padded and upscaled to the original image size before processing in the label and boundary box functions, so that the same video resolution would be received once the detection was completed.
 
@@ -194,15 +199,15 @@ The parameters for smoothing (i.e. boundary box minimum areas, the vehicle detec
 Here we see a few select frames from the video:
 
 ![image1][image1]
-Here the NN detects the vehicle in the immedite foreground, but what is also interesting is that it picks up oncoming vehicle traffic, although most of the oncoming vehicle traffic is suppressed with the smoothing of false positives. I believe this feature is important to keep in a robust system that would be able to detect traffic that the vehicle is traveling with and oncoming, and should be able to further classify the types of traffic each vehicle is in, so that it can make better decisions on whether traffic is doing something expected or unexpected.
-
+>Here the NN detects the vehicle in the immedite foreground, but what is also interesting is that it picks up oncoming vehicle traffic, although most of the oncoming vehicle traffic is suppressed with the smoothing of false positives. I believe this feature is important to keep in a robust system that would be able to detect all traffic and should be able to further classify the types of traffic each vehicle is in, so that it can make better decisions on whether other cars are doing something unexpected.
+___
 ![image2][image2]
 ![image3][image3]
-Here the NN is working as desired by applying bounding boxes around both cars individually.
-
+>Here the NN is working as desired by applying bounding boxes around both cars individually.
+___
 ![image4][image4]
-Here the highest region of false positives are shown as the NN detects vehicles for more than a few frames in the shadows of the tree on the edge of the screen. Further refinement of the process could reduce these false positives by considering the momentum and vector of each detected vehicle and ignoring roadside detections, or by improving the NN to more reliably classify and detect vehicles, of which there are already some amazing improvements being made to date.
-
+>Here the highest region of false positives are shown as the NN detects vehicles for more than a few frames in the shadows of the tree on the edge of the screen. Further refinement of the process could reduce these false positives by considering the momentum and vector of each detected vehicle and ignoring roadside detections, or by improving the NN to more reliably classify and detect vehicles, of which there are already some amazing improvements being made to date.
+___
 ### Video Implementation
 
 Your pipeline should perform reasonably well on the entire project video (somewhat wobbly or unstable bounding boxes are ok as long as you are identifying the vehicles most of the time with minimal false positives.)
